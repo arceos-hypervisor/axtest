@@ -4,16 +4,19 @@
 # 复制此脚本到组件的 scripts/ 目录即可使用
 #
 # 用法:
-#   curl -o scripts/run_tests.sh https://raw.githubusercontent.com/arceos-hypervisor/hypervisor-test-framework/main/scripts/wrapper.sh
+#   curl -o scripts/run_tests.sh https://raw.githubusercontent.com/arceos-hypervisor/axtest/main/wrapper.sh
 #   chmod +x scripts/run_tests.sh
 #   ./scripts/run_tests.sh
+#
+# 此脚本会自动下载 axtest 测试框架并执行本地测试，与 CI 测试流程保持一致。
+# 配置文件路径: COMPONENT_DIR/.github/config.json (与 CI 配置相同)
 #
 
 set -e
 
-FRAMEWORK_REPO="${HYPVISOR_TEST_FRAMEWORK_REPO:-https://github.com/arceos-hypervisor/hypervisor-test-framework}"
+FRAMEWORK_REPO="${HYPVISOR_TEST_FRAMEWORK_REPO:-https://github.com/arceos-hypervisor/axtest}"
 FRAMEWORK_BRANCH="${HYPVISOR_TEST_FRAMEWORK_BRANCH:-main}"
-FRAMEWORK_CACHE="${HYPVISOR_TEST_FRAMEWORK_CACHE:-$HOME/.cache/hypervisor-test-framework}"
+FRAMEWORK_CACHE="${HYPVISOR_TEST_FRAMEWORK_CACHE:-$HOME/.cache/axtest}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPONENT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -45,7 +48,7 @@ download_framework() {
 
 # 运行测试
 run_tests() {
-    exec "$FRAMEWORK_CACHE/scripts/run_tests.sh" \
+    exec "$FRAMEWORK_CACHE/tests.sh" \
         --component-dir "$COMPONENT_DIR" \
         "$@"
 }

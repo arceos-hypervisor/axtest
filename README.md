@@ -8,17 +8,16 @@
 
 - **组件复用测试**：多个组件共享同一套测试逻辑
 - **CI/本地一致**：本地开发测试与 CI 测试使用相同的流程
-- **简单配置**：组件只需在 `.github/config.json` 中配置即可接入
+- **零配置**：默认测试目标内置，无需配置文件
 
 ### 架构
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                   axtest (本仓库)                            │
-│  ├── .github/workflows/integration-test.yml   # 可复用 CI   │
-│  ├── scripts/run_tests.sh                     # 本地测试   │
-│  ├── scripts/wrapper.sh                       # 组件包装   │
-│  └── schema.json                              # 配置规范   │
+│  ├── .github/workflows/test.yml               # 可复用 CI   │
+│  ├── tests.sh                                 # 本地测试   │
+│  └── wrapper.sh                               # 组件包装   │
 └─────────────────────────────────────────────────────────────┘
                               │
            ┌──────────────────┼──────────────────┐
@@ -32,34 +31,7 @@
 
 ## 快速开始
 
-### 1. 在组件中创建配置文件
-
-在组件仓库的 `.github/config.json` 中添加测试配置：
-
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/arceos-hypervisor/axci/main/schema.json",
-  "component": {
-    "name": "your_component",
-    "crate_name": "your_component"
-  },
-  "test_targets": [
-    {
-      "name": "axvisor",
-      "repo": {
-        "url": "https://github.com/arceos-hypervisor/axvisor",
-        "branch": "main"
-      },
-      "build": {
-        "command": "make build A=examples/linux",
-        "timeout_minutes": 15
-      }
-    }
-  ]
-}
-```
-
-### 2. 添加 CI 配置
+### 1. 添加 CI 配置
 
 创建 `.github/workflows/test.yml`：
 
@@ -74,66 +46,49 @@ on:
 
 jobs:
   test:
-    uses: arceos-hypervisor/axtest/.github/workflows/integration-test.yml@main
-    with:
-      component_repo: ${{ github.repository }}
-      component_ref: ${{ github.ref }}
+    uses: arceos-hypervisor/axtest/.github/workflows/test.yml@main
 ```
 
-### 3. 本地测试
+**说明**：默认测试目标为 `axvisor` 和 `starry`，无需额外配置。
+
+### 2. 本地测试
 
 在组件目录中运行：
 
 ```bash
 # 方式一：直接下载脚本运行
-curl -sSL https://raw.githubusercontent.com/arceos-hypervisor/axtest/main/scripts/wrapper.sh | bash -s -- --target axvisor
+curl -sSL https://raw.githubusercontent.com/arceos-hypervisor/axtest/main/wrapper.sh | bash -s -- --target axvisor
 
 # 方式二：添加包装脚本到组件仓库
-curl -o scripts/run_tests.sh https://raw.githubusercontent.com/arceos-hypervisor/axtest/main/scripts/wrapper.sh
+curl -o scripts/run_tests.sh https://raw.githubusercontent.com/arceos-hypervisor/axtest/main/wrapper.sh
 chmod +x scripts/run_tests.sh
 ./scripts/run_tests.sh
 ```
 
-## 配置参考
+## 默认测试目标
 
-### 完整配置示例
+框架内置以下测试目标，与 `axci/.github/workflows/test.yml` 保持一致：
+
+| 目标 | 仓库 | 构建命令 |
+|------|------|----------|
+| axvisor | arceos-hypervisor/axvisor | `make build A=examples/linux` |
+| starry | Starry-OS/StarryOS | `make build` |
+
+## 高级配置（可选）
+
+如需自定义测试目标，可在组件目录创建 `.github/config.json`：
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/arceos-hypervisor/axci/main/schema.json",
-  "targets": [
-    "aarch64-unknown-none-softfloat"
-  ],
-  "rust_components": [
-    "rust-src",
-    "clippy",
-    "rustfmt",
-    "llvm-tools"
-  ],
   "component": {
-    "name": "arm_vcpu",
-    "crate_name": "arm_vcpu",
-    "description": "AArch64 virtual CPU implementation"
+    "name": "your_component",
+    "crate_name": "your_component"
   },
   "test_targets": [
     {
-      "name": "axvisor",
+      "name": "custom_target",
       "repo": {
-        "url": "https://github.com/arceos-hypervisor/axvisor",
-        "branch": "main"
-      },
-      "build": {
-        "command": "make build A=examples/linux",
-        "timeout_minutes": 15,
-        "env": {
-          "RUST_LOG": "debug"
-        }
-      }
-    },
-    {
-      "name": "starry",
-      "repo": {
-        "url": "https://github.com/Starry-OS/StarryOS",
+        "url": "https://github.com/org/repo",
         "branch": "main"
       },
       "build": {
@@ -141,11 +96,7 @@ chmod +x scripts/run_tests.sh
         "timeout_minutes": 15
       }
     }
-  ],
-  "patch": {
-    "section": "crates-io",
-    "path_template": "../component"
-  }
+  ]
 }
 ```
 
@@ -153,104 +104,19 @@ chmod +x scripts/run_tests.sh
 
 | 字段 | 必需 | 说明 |
 |------|------|------|
-| `component.name` | ✅ | 组件显示名称 |
-| `component.crate_name` | ✅ | Cargo crate 名称 |
+| `component.name` | | 组件显示名称（默认从目录名获取） |
+| `component.crate_name` | | Cargo crate 名称（默认从 Cargo.toml 获取） |
 | `test_targets[].name` | ✅ | 测试目标标识 |
 | `test_targets[].repo.url` | ✅ | 测试目标仓库 URL |
 | `test_targets[].repo.branch` | | Git 分支 (默认: main) |
 | `test_targets[].build.command` | ✅ | 构建命令 |
 | `test_targets[].build.timeout_minutes` | | 超时时间 (默认: 15) |
-| `patch.path_template` | | 组件路径模板 (默认: ../..) |
-
-## 示例：arm_vcpu 组件
-
-`arm_vcpu` 是使用本框架的示例组件，其结构如下：
-
-```
-arm_vcpu/
-├── .github/
-│   ├── config.json            # 统一配置 (Rust 配置 + 测试配置)
-│   └── workflows/
-│       └── test.yml           # 引用共享 CI
-├── scripts/
-│   └── run_tests.sh           # 本地测试包装脚本
-└── src/
-    └── ...
-```
-
-### arm_vcpu 的 .github/config.json
-
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/arceos-hypervisor/axci/main/schema.json",
-  "targets": [
-    "aarch64-unknown-none-softfloat"
-  ],
-  "rust_components": [
-    "rust-src",
-    "clippy",
-    "rustfmt",
-    "llvm-tools"
-  ],
-  "component": {
-    "name": "arm_vcpu",
-    "crate_name": "arm_vcpu",
-    "description": "AArch64 virtual CPU implementation"
-  },
-  "test_targets": [
-    {
-      "name": "axvisor",
-      "repo": {
-        "url": "https://github.com/arceos-hypervisor/axvisor",
-        "branch": "main"
-      },
-      "build": {
-        "command": "make build A=examples/linux",
-        "timeout_minutes": 15
-      }
-    },
-    {
-      "name": "starry",
-      "repo": {
-        "url": "https://github.com/Starry-OS/StarryOS",
-        "branch": "main"
-      },
-      "build": {
-        "command": "make build",
-        "timeout_minutes": 15
-      }
-    }
-  ],
-  "patch": {
-    "path_template": "../component"
-  }
-}
-```
-
-### arm_vcpu 的 CI 配置
-
-```yaml
-# .github/workflows/test.yml
-name: Test
-
-on:
-  push:
-    branches: [master, main]
-  pull_request:
-  workflow_dispatch:
-
-jobs:
-  test:
-    uses: arceos-hypervisor/axtest/.github/workflows/integration-test.yml@main
-    with:
-      component_repo: ${{ github.repository }}
-      component_ref: ${{ github.ref }}
-```
+| `patch.path_template` | | 组件路径模板 (默认: ../component) |
 
 ## 本地测试脚本选项
 
 ```bash
-./scripts/run_tests.sh [选项]
+./tests.sh [选项]
 
 选项:
   -t, --target TARGET      测试目标: all, axvisor, starry (默认: all)
@@ -265,62 +131,40 @@ jobs:
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
-| `component_repo` | 组件仓库 (owner/repo) | 必需 |
-| `component_ref` | 组件分支或 tag | main |
-| `test_framework_ref` | 测试框架版本 | main |
+| `crate_name` | 组件 crate 名称 | 自动检测 |
 | `test_targets` | 测试目标 (逗号分隔) | all |
 | `skip_build` | 跳过构建 | false |
-| `rust_toolchain` | Rust 工具链 | nightly |
 
 ## 工作原理
 
-### CI 测试流程
+### 测试流程
 
-1. **编译检查**：验证组件能够正确编译
-2. **集成测试**：
-   - 克隆测试目标仓库 (axvisor/StarryOS)
-   - 修改其 `Cargo.toml`，添加 `[patch.crates-io]` 指向组件
-   - 执行构建命令
-3. **结果汇总**：生成测试报告
+1. 克隆测试目标仓库 (axvisor/StarryOS)
+2. 修改其 `Cargo.toml`，添加 `[patch.crates-io]` 指向组件
+3. 执行构建命令
 
-### 本地测试流程
+### 本地测试与 CI 一致性
 
-与 CI 相同，但在本地执行：
-1. 下载或更新测试框架
-2. 根据配置克隆测试目标
-3. 应用 patch 并构建
+本地测试脚本 `tests.sh` 使用与 `axci/.github/workflows/test.yml` 相同的默认测试目标，无需额外配置即可运行。
 
 ## 常见问题
-
-### Q: 如何添加新的测试目标？
-
-在 `.github/config.json` 的 `test_targets` 数组中添加新条目：
-
-```json
-{
-  "name": "new_target",
-  "repo": { "url": "https://github.com/org/repo" },
-  "build": { "command": "make build" }
-}
-```
 
 ### Q: 如何调试构建失败？
 
 ```bash
 # 本地使用 verbose 模式
-./scripts/run_tests.sh -v --no-cleanup
+./tests.sh -v --no-cleanup
 
 # 检查生成的文件
 ls test-results/repos/
 cat test-results/logs/*.log
 ```
 
-### Q: patch 路径不正确怎么办？
+### Q: 如何只测试单个目标？
 
-调整 `patch.path_template`：
-- `../component` - 测试框架在父目录
-- `../..` - 测试框架在工作目录子目录
-- 绝对路径也可以
+```bash
+./tests.sh --target axvisor
+```
 
 ## 目录结构
 
@@ -328,12 +172,10 @@ cat test-results/logs/*.log
 axtest/
 ├── .github/
 │   └── workflows/
-│       └── integration-test.yml   # 可复用 CI workflow
-├── scripts/
-│   ├── run_tests.sh               # 核心测试脚本
-│   └── wrapper.sh                 # 组件包装脚本
-├── schema.json                    # JSON Schema 配置规范
-└── README.md                      # 本文档
+│       └── test.yml                # 可复用 CI workflow
+├── tests.sh                        # 本地测试脚本
+├── wrapper.sh                      # 组件包装脚本
+└── README.md                       # 本文档
 ```
 
 ## 贡献

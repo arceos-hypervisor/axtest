@@ -22,7 +22,7 @@ NC='\033[0m'
 
 # 默认配置
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FRAMEWORK_DIR="$(dirname "$SCRIPT_DIR")"
+FRAMEWORK_DIR="$SCRIPT_DIR"
 COMPONENT_DIR=""
 CONFIG_FILE=""
 TEST_TARGET="all"
@@ -37,11 +37,11 @@ show_help() {
     cat << 'EOF'
 Hypervisor Test Framework - 本地测试脚本
 
-用法: run_tests.sh [选项]
+用法: tests.sh [选项]
 
 选项:
   -c, --component-dir DIR    组件目录 (默认: 当前目录)
-  -f, --config FILE          配置文件路径 (默认: COMPONENT_DIR/.test-config.json)
+  -f, --config FILE          配置文件路径 (可选，默认使用内置测试目标)
   -t, --target TARGET        测试目标: all 或指定名称 (默认: all)
   -o, --output DIR           输出目录 (默认: COMPONENT_DIR/test-results)
   -v, --verbose              详细输出
@@ -51,9 +51,9 @@ Hypervisor Test Framework - 本地测试脚本
   -h, --help                 显示此帮助
 
 示例:
-  run_tests.sh                                    # 在当前目录运行所有测试
-  run_tests.sh -c ../arm_vcpu -t axvisor          # 测试 arm_vcpu 的 axvisor 集成
-  run_tests.sh --dry-run -v                       # 显示将要执行的命令
+  tests.sh                                    # 在当前目录运行所有测试
+  tests.sh -c ../arm_vcpu -t axvisor          # 测试 arm_vcpu 的 axvisor 集成
+  tests.sh --dry-run -v                       # 显示将要执行的命令
 
 EOF
 }
@@ -144,6 +144,22 @@ check_dependencies() {
     log_success "依赖检查通过"
 }
 
+# 默认测试目标（与 axci/.github/workflows/test.yml 保持一致）
+DEFAULT_TARGETS='[
+  {
+    "name": "axvisor",
+    "repo": {"url": "https://github.com/arceos-hypervisor/axvisor", "branch": "main"},
+    "build": {"command": "make build A=examples/linux", "timeout_minutes": 15},
+    "patch": {"path_template": "../component"}
+  },
+  {
+    "name": "starry",
+    "repo": {"url": "https://github.com/Starry-OS/StarryOS", "branch": "main"},
+    "build": {"command": "make build", "timeout_minutes": 15},
+    "patch": {"path_template": "../component"}
+  }
+]'
+
 # 加载配置
 load_config() {
     # 确定组件目录
@@ -151,21 +167,37 @@ load_config() {
         COMPONENT_DIR="$(pwd)"
     fi
     
-    # 确定配置文件
+    # 尝试查找配置文件（可选）
     if [ -z "$CONFIG_FILE" ]; then
-        CONFIG_FILE="$COMPONENT_DIR/.test-config.json"
+        if [ -f "$COMPONENT_DIR/.github/config.json" ]; then
+            CONFIG_FILE="$COMPONENT_DIR/.github/config.json"
+        elif [ -f "$COMPONENT_DIR/.test-config.json" ]; then
+            CONFIG_FILE="$COMPONENT_DIR/.test-config.json"
+        fi
     fi
     
-    if [ ! -f "$CONFIG_FILE" ]; then
-        error "配置文件不存在: $CONFIG_FILE"
+    # 检测 crate 名称（从 Cargo.toml）
+    if [ -f "$COMPONENT_DIR/Cargo.toml" ]; then
+        COMPONENT_CRATE=$(grep '^name = ' "$COMPONENT_DIR/Cargo.toml" | head -1 | sed 's/name = "\(.*\)"/\1/' || basename "$COMPONENT_DIR")
+    else
+        COMPONENT_CRATE=$(basename "$COMPONENT_DIR")
     fi
+    COMPONENT_NAME="$COMPONENT_CRATE"
     
-    log "加载配置: $CONFIG_FILE"
-    CONFIG=$(cat "$CONFIG_FILE")
-    
-    # 解析基本信息
-    COMPONENT_NAME=$(echo "$CONFIG" | jq -r '.component.name')
-    COMPONENT_CRATE=$(echo "$CONFIG" | jq -r '.component.crate_name')
+    # 如果有配置文件，则使用配置文件
+    if [ -n "$CONFIG_FILE" ] && [ -f "$CONFIG_FILE" ]; then
+        log "加载配置: $CONFIG_FILE"
+        CONFIG=$(cat "$CONFIG_FILE")
+        
+        # 从配置文件获取组件信息
+        local config_name=$(echo "$CONFIG" | jq -r '.component.name // empty')
+        local config_crate=$(echo "$CONFIG" | jq -r '.component.crate_name // empty')
+        [ -n "$config_name" ] && COMPONENT_NAME="$config_name"
+        [ -n "$config_crate" ] && COMPONENT_CRATE="$config_crate"
+    else
+        log "未找到配置文件，使用默认测试目标"
+        CONFIG="{\"component\":{\"name\":\"$COMPONENT_NAME\",\"crate_name\":\"$COMPONENT_CRATE\"},\"test_targets\":$DEFAULT_TARGETS}"
+    fi
     
     log_debug "组件: $COMPONENT_NAME ($COMPONENT_CRATE)"
 }
@@ -240,14 +272,24 @@ run_test_target() {
         fi
     fi
     
-    # 应用 patch
-    local patch_path=$(echo "$CONFIG" | jq -r '.patch.path_template // "../.."')
+    # 应用 patch - 与 CI 逻辑保持一致
+    # 优先级: 目标配置 > 全局配置 > 默认值
+    local patch_section=$(echo "$target_config" | jq -r '.patch.section // empty')
+    [ -z "$patch_section" ] && patch_section=$(echo "$CONFIG" | jq -r '.patch.section // "crates-io"')
+    
+    local patch_path=$(echo "$target_config" | jq -r '.patch.path_template // empty')
+    [ -z "$patch_path" ] && patch_path=$(echo "$CONFIG" | jq -r '.patch.path_template // "../component"')
+    
     # 转换为绝对路径
     if [[ "$patch_path" == ".."* ]]; then
-        patch_path="$(cd "$test_dir/$patch_path" && pwd)"
+        patch_path="$(cd "$test_dir/$patch_path" 2>/dev/null && pwd)" || {
+            log_error "无法解析 patch 路径: $test_dir/$patch_path"
+            echo "failed" > "$status_file"
+            return 1
+        }
     fi
     
-    log "  应用组件 patch..."
+    log "  应用组件 patch (section: $patch_section, path: $patch_path)..."
     if [ "$DRY_RUN" == true ]; then
         echo "[DRY-RUN] 添加 patch 到 $test_dir/Cargo.toml"
     else
@@ -257,14 +299,15 @@ run_test_target() {
         if ! grep -q "\[$COMPONENT_CRATE\]" Cargo.toml 2>/dev/null; then
             cat >> Cargo.toml << EOF
 
-[patch.crates-io]
+[patch.$patch_section]
 $COMPONENT_CRATE = { path = "$patch_path" }
 EOF
+            log_debug "已添加 patch 到 Cargo.toml"
         fi
     fi
     
     # 执行构建
-    log "  构建..."
+    log "  构建... ($build_cmd, timeout: ${timeout_min}m)"
     if [ "$DRY_RUN" == true ]; then
         echo "[DRY-RUN] cd $test_dir && timeout ${timeout_min}m $build_cmd"
     else
