@@ -38,6 +38,7 @@
 
 ```json
 {
+  "$schema": "https://raw.githubusercontent.com/arceos-hypervisor/axci/main/schema.json",
   "component": {
     "name": "your_component",
     "crate_name": "your_component"
@@ -99,7 +100,7 @@ chmod +x scripts/run_tests.sh
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/arceos-hypervisor/axtest/main/schema.json",
+  "$schema": "https://raw.githubusercontent.com/arceos-hypervisor/axci/main/schema.json",
   "targets": [
     "aarch64-unknown-none-softfloat"
   ],
@@ -181,7 +182,7 @@ arm_vcpu/
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/arceos-hypervisor/axtest/main/schema.json",
+  "$schema": "https://raw.githubusercontent.com/arceos-hypervisor/axci/main/schema.json",
   "targets": [
     "aarch64-unknown-none-softfloat"
   ],
