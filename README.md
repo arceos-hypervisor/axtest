@@ -16,8 +16,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                   axtest (本仓库)                            │
 │  ├── .github/workflows/test.yml               # 可复用 CI   │
-│  ├── tests.sh                                 # 本地测试   │
-│  └── wrapper.sh                               # 组件包装   │
+│  └── tests.sh                                 # 本地测试   │
 └─────────────────────────────────────────────────────────────┘
                               │
            ┌──────────────────┼──────────────────┐
@@ -56,13 +55,8 @@ jobs:
 在组件目录中运行：
 
 ```bash
-# 方式一：直接下载脚本运行
-curl -sSL https://raw.githubusercontent.com/arceos-hypervisor/axtest/main/wrapper.sh | bash -s -- --target axvisor
-
-# 方式二：添加包装脚本到组件仓库
-curl -o scripts/run_tests.sh https://raw.githubusercontent.com/arceos-hypervisor/axtest/main/wrapper.sh
-chmod +x scripts/run_tests.sh
-./scripts/run_tests.sh
+# 直接下载运行
+curl -sSL https://raw.githubusercontent.com/arceos-hypervisor/axtest/main/tests.sh | bash -s -- --target axvisor
 ```
 
 ## 默认测试目标
@@ -174,7 +168,6 @@ axtest/
 │   └── workflows/
 │       └── test.yml                # 可复用 CI workflow
 ├── tests.sh                        # 本地测试脚本
-├── wrapper.sh                      # 组件包装脚本
 └── README.md                       # 本文档
 ```
 
