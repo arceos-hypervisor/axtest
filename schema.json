@@ -1,0 +1,141 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Hypervisor Component Test Configuration",
+  "type": "object",
+  "required": ["component", "test_targets"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference"
+    },
+    "component": {
+      "type": "object",
+      "required": ["name", "crate_name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "组件显示名称"
+        },
+        "crate_name": {
+          "type": "string",
+          "description": "Cargo crate 名称"
+        },
+        "description": {
+          "type": "string",
+          "description": "组件描述"
+        }
+      }
+    },
+    "test_targets": {
+      "type": "array",
+      "description": "测试目标列表",
+      "items": {
+        "type": "object",
+        "required": ["name", "repo", "build"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "测试目标名称 (用于日志和标识)"
+          },
+          "repo": {
+            "type": "object",
+            "required": ["url"],
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Git 仓库 URL"
+              },
+              "branch": {
+                "type": "string",
+                "default": "main",
+                "description": "Git 分支"
+              },
+              "depth": {
+                "type": "integer",
+                "default": 1,
+                "description": "Git clone 深度"
+              }
+            }
+          },
+          "build": {
+            "type": "object",
+            "required": ["command"],
+            "properties": {
+              "command": {
+                "type": "string",
+                "description": "构建命令"
+              },
+              "timeout_minutes": {
+                "type": "integer",
+                "default": 15,
+                "minimum": 1,
+                "description": "构建超时时间（分钟）"
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "环境变量"
+              }
+            }
+          },
+          "qemu": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": false,
+                "description": "是否在 QEMU 中运行"
+              },
+              "binary_path": {
+                "type": "string",
+                "description": "构建产物路径（相对于仓库根目录）"
+              },
+              "machine": {
+                "type": "string",
+                "default": "virt",
+                "description": "QEMU machine 类型"
+              },
+              "cpu": {
+                "type": "string",
+                "default": "cortex-a57",
+                "description": "QEMU CPU 类型"
+              },
+              "memory": {
+                "type": "string",
+                "default": "512M",
+                "description": "QEMU 内存大小"
+              },
+              "timeout_seconds": {
+                "type": "integer",
+                "default": 60,
+                "description": "QEMU 运行超时（秒）"
+              },
+              "extra_args": {
+                "type": "string",
+                "description": "额外的 QEMU 参数"
+              }
+            }
+          }
+        }
+      }
+    },
+    "patch": {
+      "type": "object",
+      "properties": {
+        "section": {
+          "type": "string",
+          "default": "crates-io",
+          "description": "Cargo.toml patch section"
+        },
+        "path_template": {
+          "type": "string",
+          "default": "../..",
+          "description": "组件路径模板（相对于测试目标仓库）"
+        }
+      }
+    }
+  }
+}
