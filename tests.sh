@@ -144,7 +144,7 @@ check_dependencies() {
     log_success "依赖检查通过"
 }
 
-# 默认测试目标（与 axci/.github/workflows/test.yml 保持一致）
+# 默认测试目标（与 .github/workflows/test.yml 保持一致）
 DEFAULT_TARGETS='[
   {
     "name": "axvisor",

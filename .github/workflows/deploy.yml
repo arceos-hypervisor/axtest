@@ -1,0 +1,93 @@
+# Deploy Workflow
+# Deploys documentation to GitHub Pages on version tags
+#
+# Trigger: push tag v*.*.*
+# Inputs:
+#   verify_branch: Verify tag is on main/master branch (default: true)
+#   verify_version: Verify Cargo.toml version matches tag (default: true)
+
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      verify_branch:
+        description: 'Verify tag is on main/master branch'
+        required: false
+        default: true
+        type: boolean
+      verify_version:
+        description: 'Verify Cargo.toml version matches tag'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'pages'
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  verify-tag:
+    uses: ./.github/workflows/verify-tag.yml
+    with:
+      verify_branch: ${{ inputs.verify_branch }}
+      verify_version: ${{ inputs.verify_version }}
+
+  build:
+    name: Build documentation
+    runs-on: ubuntu-latest
+    needs: verify-tag
+    if: needs.verify-tag.outputs.should_proceed == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Build docs
+        env:
+          RUSTDOCFLAGS: -D rustdoc::broken_intra_doc_links -D missing-docs
+        run: |
+          cargo doc --no-deps --all-features
+          
+          if [ -d "target/doc" ]; then
+            DOC_DIR="target/doc"
+          else
+            DOC_DIR=$(find target -type d -name doc -path "target/*/doc" | head -n 1)
+            if [ -z "$DOC_DIR" ]; then
+              echo "Error: Could not find documentation directory"
+              exit 1
+            fi
+          fi
+          
+          echo "Documentation found in: $DOC_DIR"
+          printf '<meta http-equiv="refresh" content="0;url=%s/index.html">' $(cargo tree | head -1 | cut -d' ' -f1) > "${DOC_DIR}/index.html"
+          echo "DOC_DIR=${DOC_DIR}" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ env.DOC_DIR }}
+
+  deploy:
+    name: Deploy to GitHub Pages
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: [verify-tag, build]
+    if: needs.verify-tag.outputs.should_proceed == 'true'
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

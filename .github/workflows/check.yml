@@ -1,0 +1,88 @@
+# Quality Check Workflow
+# Performs code quality checks: format, clippy, build, doc
+#
+# Default config: targets = [aarch64-unknown-none-softfloat]
+#                 rust_components = [rust-src, clippy, rustfmt, llvm-tools]
+# Inputs:
+#   all_features: Use --all-features flag (default: true)
+#   targets: Build targets (JSON array, optional)
+#   rust_components: Rust components to install (optional)
+#   skip_build: Skip build step (default: false)
+
+name: Check
+
+on:
+  workflow_call:
+    inputs:
+      all_features:
+        description: 'Use --all-features flag'
+        required: false
+        default: true
+        type: boolean
+      targets:
+        description: 'Build targets (JSON array)'
+        required: false
+        default: '["aarch64-unknown-none-softfloat"]'
+        type: string
+      rust_components:
+        description: 'Rust components (comma-separated)'
+        required: false
+        default: 'rust-src, clippy, rustfmt, llvm-tools'
+        type: string
+      skip_build:
+        description: 'Skip build step'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(inputs.targets) }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: ${{ inputs.rust_components }}
+          targets: ${{ matrix.target }}
+
+      - name: Check rust version
+        run: rustc --version --verbose
+
+      - name: Check code format
+        run: cargo fmt --all -- --check
+
+      - name: Build
+        if: ${{ inputs.skip_build != true }}
+        run: |
+          if [ "${{ inputs.all_features }}" = "true" ]; then
+            cargo build --target ${{ matrix.target }} --all-features
+          else
+            cargo build --target ${{ matrix.target }}
+          fi
+
+      - name: Run clippy
+        run: |
+          if [ "${{ inputs.all_features }}" = "true" ]; then
+            cargo clippy --target ${{ matrix.target }} --all-features -- -D warnings
+          else
+            cargo clippy --target ${{ matrix.target }} -- -D warnings
+          fi
+
+      - name: Build documentation
+        env:
+          RUSTDOCFLAGS: -D rustdoc::broken_intra_doc_links -D missing-docs
+        run: |
+          if [ "${{ inputs.all_features }}" = "true" ]; then
+            cargo doc --no-deps --target ${{ matrix.target }} --all-features
+          else
+            cargo doc --no-deps --target ${{ matrix.target }}
+          fi

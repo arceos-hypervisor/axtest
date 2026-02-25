@@ -1,0 +1,106 @@
+# Release Workflow
+# Creates GitHub release and publishes to crates.io
+#
+# Trigger: push tag v*.*.* (stable) or v*.*.*-pre.* (prerelease)
+# - Stable releases must be on main/master branch (if verify_branch=true)
+# - Prereleases must be on dev branch (if verify_branch=true)
+#
+# Inputs:
+#   verify_branch: Verify tag is on correct branch (default: true)
+#   verify_version: Verify Cargo.toml version matches tag (default: true)
+
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      verify_branch:
+        description: 'Verify tag is on correct branch'
+        required: false
+        default: true
+        type: boolean
+      verify_version:
+        description: 'Verify Cargo.toml version matches tag'
+        required: false
+        default: true
+        type: boolean
+    secrets:
+      CARGO_REGISTRY_TOKEN:
+        description: 'Token for publishing to crates.io'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  verify-tag:
+    uses: ./.github/workflows/verify-tag.yml
+    with:
+      verify_branch: ${{ inputs.verify_branch }}
+      verify_version: ${{ inputs.verify_version }}
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: verify-tag
+    if: needs.verify-tag.outputs.should_proceed == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          CURRENT_TAG="${{ github.ref_name }}"
+          
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -A1 "^${CURRENT_TAG}$" | tail -n1)
+          
+          if [ -z "$PREVIOUS_TAG" ] || [ "$PREVIOUS_TAG" == "$CURRENT_TAG" ]; then
+            echo "No previous tag found, this is the first release"
+            CHANGELOG="Initial release"
+          else
+            echo "Generating changelog from $PREVIOUS_TAG to $CURRENT_TAG"
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" "${PREVIOUS_TAG}..${CURRENT_TAG}")
+            if [ -z "$CHANGELOG" ]; then
+              CHANGELOG="No changes"
+            fi
+          fi
+          
+          {
+            echo "changelog<<EOF"
+            echo "$CHANGELOG"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: ${{ needs.verify-tag.outputs.is_prerelease == 'true' }}
+          body: |
+            ## Changes
+            ${{ steps.release_notes.outputs.changelog }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    needs: [verify-tag, release]
+    if: needs.verify-tag.outputs.should_proceed == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Dry run publish
+        run: cargo publish --dry-run
+
+      - name: Publish to crates.io
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
